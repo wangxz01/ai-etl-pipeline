@@ -1,0 +1,63 @@
+{
+  "requirement": "Get daily active users by region for the last 30 days, joined with user profile table, filter out test accounts, output as partitioned Parquet files",
+  "context": {
+    "business_unit": "Growth Analytics",
+    "priority": "high",
+    "requested_by": "product-team@example.com",
+    "slack_channel": "#analytics-requests"
+  },
+  "data_sources": {
+    "user_events": {
+      "description": "Clickstream events from web and mobile clients",
+      "location": "public.user_events",
+      "key_columns": ["event_id", "user_id", "event_date"],
+      "approximate_row_count": "500M",
+      "columns": [
+        {"name": "event_id", "type": "UUID", "description": "Unique event identifier"},
+        {"name": "user_id", "type": "UUID", "description": "FK to user_profiles.user_id"},
+        {"name": "event_date", "type": "DATE", "description": "Date of the event (UTC)"},
+        {"name": "event_type", "type": "VARCHAR(64)", "description": "e.g., page_view, click, purchase"},
+        {"name": "region", "type": "VARCHAR(64)", "description": "Geographic region (may be null)"},
+        {"name": "platform", "type": "VARCHAR(16)", "description": "web, ios, android"}
+      ]
+    },
+    "user_profiles": {
+      "description": "User demographic and account information",
+      "location": "public.user_profiles",
+      "key_columns": ["user_id"],
+      "approximate_row_count": "20M",
+      "columns": [
+        {"name": "user_id", "type": "UUID", "description": "Primary key"},
+        {"name": "region", "type": "VARCHAR(64)", "description": "User's home region"},
+        {"name": "is_test_account", "type": "BOOLEAN", "description": "True for QA/test accounts"},
+        {"name": "signup_date", "type": "DATE", "description": "Date the user signed up"},
+        {"name": "account_tier", "type": "VARCHAR(16)", "description": "free, pro, enterprise"}
+      ]
+    }
+  },
+  "output_specification": {
+    "format": "parquet",
+    "destination": "s3://data-warehouse/etl/daily_active_users/",
+    "partition_by": ["region"],
+    "sort_by": ["event_date"],
+    "file_naming": "dau_{region}_{date}.parquet",
+    "retention_days": 365
+  },
+  "validation_expectations": {
+    "expected_row_count_approx": "180–210 rows (7 regions × 30 days)",
+    "max_null_rate": 0.01,
+    "expected_columns": ["event_date", "region", "daily_active_users", "total_events", "unique_platforms"],
+    "business_rules": [
+      "A daily active user must have at least one event on the given date",
+      "Test accounts (is_test_account = true) must be excluded",
+      "If region is null in both tables, default to 'Unknown'",
+      "DAU counts must be non-negative integers"
+    ]
+  },
+  "schedule": {
+    "frequency": "daily",
+    "time": "06:00 UTC",
+    "timezone": "UTC",
+    "sla": "08:00 UTC"
+  }
+}
